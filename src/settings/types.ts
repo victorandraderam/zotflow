@@ -26,6 +26,13 @@ export type CitationFormat = "pandoc" | "footnote" | "wikilink" | "citekey";
 /** Auto-copy mode applied when a new annotation is created in the reader. */
 export type AutoCopyAnnotationMode = "off" | "embed" | "text" | "citation";
 
+/**
+ * Which top-level items get a source note created automatically, after sync
+ * and from the batch commands. Opening an item always creates its note, and
+ * items that already have a note are always kept up to date.
+ */
+export type SourceNoteCreation = "all" | "annotated" | "manual";
+
 /** Per-library sync configuration. */
 export interface LibraryConfig {
     mode: LibrarySyncMode;
@@ -75,6 +82,7 @@ export interface ZotFlowSettings {
     autoCopyAnnotation: AutoCopyAnnotationMode;
     autoUpdateSourceNotesAfterSync: boolean;
     autoPurgeTrashedSourceNotes: boolean;
+    sourceNoteCreation: SourceNoteCreation;
     autoDisableNoteImageTextTools: boolean;
     epubFontFamily: string;
     /** CSL renderer: default style id (slug or custom style key). */
@@ -153,6 +161,7 @@ export const DEFAULT_SETTINGS: ZotFlowSettings = {
     autoCopyAnnotation: "off",
     autoUpdateSourceNotesAfterSync: true,
     autoPurgeTrashedSourceNotes: false,
+    sourceNoteCreation: "all",
     autoDisableNoteImageTextTools: true,
     epubFontFamily: "",
     cslDefaultStyleId: "apa",
