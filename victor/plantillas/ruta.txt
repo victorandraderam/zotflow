@@ -1,0 +1,1 @@
+Academia/Biblioteca/{% if libraryName == "dataprivacy" %}dataprivacy/{% endif %}@{{ citationKey | default: key | replace: "/", "-" }}
