@@ -120,6 +120,19 @@ export class SyncSection {
                         },
                     },
                     {
+                        name: "Create source notes automatically",
+                        desc: "Which items get a brand-new source note after sync and from the batch commands. Opening an item always creates its note, and existing notes are always kept up to date.",
+                        control: {
+                            type: "dropdown",
+                            key: "sourceNoteCreation",
+                            options: {
+                                all: "Every changed item",
+                                annotated: "Only items with annotations or notes",
+                                manual: "Only when I open an item",
+                            },
+                        },
+                    },
+                    {
                         name: "Auto-purge source notes for trashed items",
                         desc: "When enabled, source notes for items moved to the Zotero trash are automatically removed (sent to the system trash) after each sync.",
                         control: {

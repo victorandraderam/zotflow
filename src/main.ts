@@ -318,7 +318,9 @@ export default class ZotFlow extends Plugin {
                 await this.runTaskCommand(
                     async () => {
                         const items =
-                            await workerBridge.dbHelper.getAllTopLevelItemIdentifiers();
+                            await workerBridge.libraryNote.filterByCreationPolicy(
+                                await workerBridge.dbHelper.getAllTopLevelItemIdentifiers(),
+                            );
                         return workerBridge.createBatchNoteTask(
                             { items },
                             {},
@@ -338,7 +340,9 @@ export default class ZotFlow extends Plugin {
                 await this.runTaskCommand(
                     async () => {
                         const items =
-                            await workerBridge.dbHelper.getAllTopLevelItemIdentifiers();
+                            await workerBridge.libraryNote.filterByCreationPolicy(
+                                await workerBridge.dbHelper.getAllTopLevelItemIdentifiers(),
+                            );
                         return workerBridge.createBatchNoteTask(
                             { items },
                             {

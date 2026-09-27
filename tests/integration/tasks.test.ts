@@ -651,11 +651,14 @@ describe("post-sync source-note refresh", () => {
 
     const noteService = {
         purgeTrashedSourceNotes: () => Promise.resolve(),
+        filterByCreationPolicy: (items: { libraryID: number; itemKey: string }[]) =>
+            Promise.resolve(items),
     } as unknown as LibraryNoteService;
 
     async function runWith(
         changedItems: { libraryID: number; itemKey: string }[],
         over: Partial<typeof settings> = {},
+        service: LibraryNoteService = noteService,
     ) {
         const { manager: m, calls } = spyManager();
         const task = new SyncTask(
@@ -670,7 +673,7 @@ describe("post-sync source-note refresh", () => {
             ),
             undefined,
             m,
-            noteService,
+            service,
             { ...settings, ...over },
         );
         await task.execute(new AbortController().signal);
@@ -852,6 +855,47 @@ describe("post-sync source-note refresh", () => {
         await logged;
 
         expect(task.getInfo().status).toBe("completed");
+    });
+
+    test("only the items the creation policy allows are refreshed", async () => {
+        await seedItem({ libraryID: LIB, key: "KEEP0001" });
+        await seedItem({ libraryID: LIB, key: "DROP0001" });
+        const seen: string[][] = [];
+        const filtering = {
+            ...noteService,
+            filterByCreationPolicy: (items: { libraryID: number; itemKey: string }[]) => {
+                seen.push(items.map((i) => i.itemKey));
+                return Promise.resolve(
+                    items.filter((i) => i.itemKey === "KEEP0001"),
+                );
+            },
+        } as unknown as LibraryNoteService;
+
+        const calls = await runWith(
+            [
+                { libraryID: LIB, itemKey: "KEEP0001" },
+                { libraryID: LIB, itemKey: "DROP0001" },
+            ],
+            {},
+            filtering,
+        );
+
+        expect(seen).toEqual([["KEEP0001", "DROP0001"]]);
+        expect(calls).toEqual([
+            { items: [{ libraryID: LIB, itemKey: "KEEP0001" }] },
+        ]);
+    });
+
+    test("nothing is spawned when the policy drops every item", async () => {
+        await seedItem({ libraryID: LIB, key: "DROP0001" });
+        const dropping = {
+            ...noteService,
+            filterByCreationPolicy: () => Promise.resolve([]),
+        } as unknown as LibraryNoteService;
+
+        expect(
+            await runWith([{ libraryID: LIB, itemKey: "DROP0001" }], {}, dropping),
+        ).toEqual([]);
     });
 });
 

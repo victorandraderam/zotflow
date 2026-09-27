@@ -942,3 +942,51 @@ describe("template path handling", () => {
         expect(reads).toContain("");
     });
 });
+
+describe("creation policy", () => {
+    async function annotated(key: string) {
+        await seedItem({ libraryID: LIB, key });
+        await seedItem({ libraryID: LIB, key: `${key}A`, itemType: "attachment", parentItem: key });
+        await seedItem({ libraryID: LIB, key: `${key}N`, itemType: "annotation", parentItem: `${key}A` });
+    }
+
+    test("the first sync only creates notes for annotated items", async () => {
+        // A first sync reports every item as changed; under 'annotated' only
+        // the ones with annotations or child notes may be born.
+        await setup({ sourceNoteCreation: "annotated" });
+        await annotated("READ0001");
+        await seedItem({ libraryID: LIB, key: "UNREAD01" });
+        await seedItem({ libraryID: LIB, key: "UNREAD02" });
+
+        expect(
+            await service.filterByCreationPolicy([
+                { libraryID: LIB, itemKey: "READ0001" },
+                { libraryID: LIB, itemKey: "UNREAD01" },
+                { libraryID: LIB, itemKey: "UNREAD02" },
+            ]),
+        ).toEqual([{ libraryID: LIB, itemKey: "READ0001" }]);
+    });
+
+    test("an item whose note already exists is kept even without annotations", async () => {
+        await setup({ sourceNoteCreation: "annotated" });
+        await seedItem({ libraryID: LIB, key: "HASNOTE1" });
+        host.keyIndex.set("HASNOTE1", "Source/@HASNOTE1.md");
+
+        expect(
+            await service.filterByCreationPolicy([
+                { libraryID: LIB, itemKey: "HASNOTE1" },
+            ]),
+        ).toEqual([{ libraryID: LIB, itemKey: "HASNOTE1" }]);
+    });
+
+    test("the factory default keeps today's behaviour", async () => {
+        await setup();
+        await seedItem({ libraryID: LIB, key: "UNREAD01" });
+
+        expect(
+            await service.filterByCreationPolicy([
+                { libraryID: LIB, itemKey: "UNREAD01" },
+            ]),
+        ).toEqual([{ libraryID: LIB, itemKey: "UNREAD01" }]);
+    });
+});

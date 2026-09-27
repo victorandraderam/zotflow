@@ -72,7 +72,13 @@ export class SyncTask extends BaseTask {
             try {
                 const resolved =
                     await this.resolveNoteBearingItems(changedItems);
-                if (resolved.length > 0) {
+                // A changed item without a source note is only given one if
+                // the creation policy allows it; existing notes always refresh.
+                const eligible =
+                    await this.libraryNoteService.filterByCreationPolicy(
+                        resolved,
+                    );
+                if (eligible.length > 0) {
                     // Fire-and-forget: spawned task is independently tracked.
                     // Force content refresh: annotation/note changes do not
                     // bump the parent item's version, so the version-equality
@@ -85,7 +91,7 @@ export class SyncTask extends BaseTask {
                     this.taskManager
                         .createBatchNoteTask(
                             this.libraryNoteService,
-                            { items: resolved },
+                            { items: eligible },
                             { forceUpdateContent: true },
                             true,
                         )

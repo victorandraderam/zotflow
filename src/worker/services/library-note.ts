@@ -9,6 +9,8 @@ import type { IParentProxy } from "bridge/types";
 import type { AttachmentService } from "./attachment";
 import type { DocumentWorkerService } from "./document-worker";
 import type { NotePathService } from "./note-path";
+import { filterByCreationPolicy } from "./source-note-policy";
+import type { ItemIdentifier } from "worker/tasks/impl/batch-extract-images-task";
 import { ZotFlowError, ZotFlowErrorCode } from "utils/error";
 import {
     workerClearTimeout,
@@ -195,6 +197,22 @@ export class LibraryNoteService {
         const timer = workerSetTimeout(() => void run(), DEBOUNCE_DELAY);
 
         this.debouncers.set(debounceId, timer);
+    }
+
+    /**
+     * Narrow top-level items to those whose source note may be written under
+     * the `sourceNoteCreation` setting. Items that already have a note always
+     * pass (see `filterByCreationPolicy`).
+     */
+    async filterByCreationPolicy(
+        items: ItemIdentifier[],
+    ): Promise<ItemIdentifier[]> {
+        return filterByCreationPolicy(
+            items,
+            this.settings.sourceNoteCreation ?? "all",
+            async ({ itemKey }) =>
+                (await this.parentHost.getFileByKey(itemKey)) !== null,
+        );
     }
 
     /**

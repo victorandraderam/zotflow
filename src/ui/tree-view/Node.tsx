@@ -198,9 +198,14 @@ export const NodeItem = ({ node, style }: NodeRendererProps<ViewNode>) => {
                             };
                             node.data.children.forEach(collectItems);
 
+                            const allowed =
+                                await workerBridge.libraryNote.filterByCreationPolicy(
+                                    items,
+                                );
+
                             const taskId =
                                 await workerBridge.createBatchNoteTask(
-                                    { items },
+                                    { items: allowed },
                                     {},
                                     false,
                                 );
