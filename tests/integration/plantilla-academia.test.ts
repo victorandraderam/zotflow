@@ -384,18 +384,36 @@ describe("normativa", () => {
 
     test("un capítulo RAN sin number usa chapter-number como número", async () => {
         // CONTRATO.md: el número de capítulo va en la línea de Extra
-        // "Chapter Number: 2-2", que llega a la variable CSL chapter-number,
-        // no a number.
+        // "Chapter Number: 2-2". Para el tipo standard Zotero no la convierte
+        // en la variable chapter-number: la deja como línea en note. Este es
+        // el CSL-JSON real de ran8-41 (Zotero 10, 28-09-2026).
         const item = await entrada("RAN00002", "standard", {
             type: "standard",
             genre: "capítulo RAN",
             authority: "Comisión para el Mercado Financiero",
-            "chapter-number": "8-41",
+            note: "container-title: Recopilación Actualizada de Normas\nchapter-number: 8-41\ntex.entrysubtype: ran",
         });
         const nota = await service.renderLibrarySourceNote(item, PLANTILLA, {});
         expect(nota).toContain("numero: 8-41");
+        expect(nota).not.toContain("\n\n\n");
         const texto = nota.split("---\n").slice(2).join("---\n");
         expect(texto).toContain("- Denominación y número: capítulo RAN 8-41");
+    });
+
+    test("un capítulo CNF con número romano en note y la variable directa también sirven", async () => {
+        const cnf = await entrada("CNF00002", "standard", {
+            type: "standard",
+            genre: "capítulo CNF",
+            authority: "Banco Central de Chile",
+            note: "container-title: Compendio de Normas Financieras\nchapter-number: III.J.1\ntex.entrysubtype: cnf\nnote: texto de Circular 3013-992",
+        });
+        expect(await service.renderLibrarySourceNote(cnf, PLANTILLA, {})).toContain("numero: III.J.1");
+        const directa = await entrada("MSI00002", "standard", {
+            type: "standard",
+            genre: "capítulo MSI",
+            "chapter-number": "2-2",
+        });
+        expect(await service.renderLibrarySourceNote(directa, PLANTILLA, {})).toContain("numero: 2-2");
     });
 
     test("clases del contrato por tipo y denominación", async () => {

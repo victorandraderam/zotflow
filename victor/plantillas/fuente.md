@@ -70,10 +70,12 @@ zotero: {{ item | item_link: "zotero" | json }}
 {%- endif %}
 {%- comment -%}
   RAN, CNF y MSI no traen "number": el número de capítulo viaja en la
-  variable CSL chapter-number (línea de Extra "Chapter Number: 2-2" en
-  CONTRATO.md). Se usa como respaldo cuando number falta.
+  línea de Extra "Chapter Number: 2-2" (CONTRATO.md). Para el tipo standard
+  Zotero no la convierte en la variable CSL chapter-number sino que la deja
+  como línea "chapter-number: 2-2" en csl.note; se leen las dos formas y se
+  usan como respaldo cuando number falta.
 {%- endcomment -%}
-{%- assign numero_o_capitulo = csl.number | default: csl["chapter-number"] | default: "" -%}
+{%- assign capitulo = csl["chapter-number"] | default: "" -%}{%- if capitulo == "" and csl.note -%}{%- assign lineas_nota = csl.note | split: newline -%}{%- for linea in lineas_nota -%}{%- assign partes = linea | split: ": " -%}{%- if partes[0] == "chapter-number" or partes[0] == "Chapter Number" -%}{%- assign capitulo = partes[1] | strip -%}{%- endif -%}{%- endfor -%}{%- endif -%}{%- assign numero_o_capitulo = csl.number | default: capitulo | default: "" -%}
 organo: {{ csl.authority | default: csl.publisher | default: "" | json }}
 denominacion: {{ csl.genre | default: "" | json }}
 numero: {{ numero_o_capitulo | json }}
@@ -115,11 +117,11 @@ enlace_oficial: {{ csl.URL | default: "" | json }}
 {%- endif -%}
 {%- comment -%}
   RAN, CNF y MSI no traen "number": el número de capítulo viaja en la
-  variable CSL chapter-number (línea de Extra "Chapter Number: 2-2" en
-  CONTRATO.md). Se usa como respaldo cuando number falta, aquí y en el
-  frontmatter.
+  línea de Extra "Chapter Number: 2-2" (CONTRATO.md), que Zotero deja en
+  csl.note como "chapter-number: 2-2" para el tipo standard. Se usa como
+  respaldo cuando number falta, aquí y en el frontmatter.
 {%- endcomment -%}
-{%- assign numero_o_capitulo = csl.number | default: csl["chapter-number"] | default: "" -%}
+{%- assign capitulo = csl["chapter-number"] | default: "" -%}{%- if capitulo == "" and csl.note -%}{%- assign lineas_nota = csl.note | split: newline -%}{%- for linea in lineas_nota -%}{%- assign partes = linea | split: ": " -%}{%- if partes[0] == "chapter-number" or partes[0] == "Chapter Number" -%}{%- assign capitulo = partes[1] | strip -%}{%- endif -%}{%- endfor -%}{%- endif -%}{%- assign numero_o_capitulo = csl.number | default: capitulo | default: "" -%}
 {%- capture titulo_bloque -%}
 # {{ item.title }}
 {%- endcapture -%}
