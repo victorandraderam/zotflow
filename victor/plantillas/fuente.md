@@ -25,11 +25,20 @@ zotero: {{ item | item_link: "zotero" | json }}
 {%- when "legislation" -%}
 {%- case genero -%}{%- when "ley" -%}{%- assign clase = "ley" -%}{%- when "dfl" -%}{%- assign clase = "dfl" -%}{%- when "dl" -%}{%- assign clase = "dl" -%}{%- when "código" -%}{%- assign clase = "codigo" -%}{%- when "constitución política de la república" -%}{%- assign clase = "constitucion" -%}{%- endcase -%}
 {%- when "regulation" -%}
-{%- case genero -%}{%- when "ds" -%}{%- assign clase = "ds" -%}{%- when "reglamento" -%}{%- assign clase = "reglamento" -%}{%- when "decreto exento", "resolución exenta" -%}{%- assign clase = "do-norma" -%}{%- endcase -%}
+{%- case genero -%}{%- when "ds", "decreto supremo" -%}{%- assign clase = "ds" -%}{%- when "reglamento" -%}{%- assign clase = "reglamento" -%}{%- when "decreto exento", "resolución exenta" -%}{%- assign clase = "do-norma" -%}{%- endcase -%}
 {%- when "standard" -%}
 {%- case genero -%}{%- when "" -%}{%- when "norma de carácter general" -%}{%- assign clase = "ncg" -%}{%- when "circular" -%}{%- assign clase = "circular" -%}{%- when "oficio" -%}{%- assign clase = "oficio" -%}{%- when "capítulo ran" -%}{%- assign clase = "ran" -%}{%- when "capítulo cnf" -%}{%- assign clase = "cnf" -%}{%- when "capítulo msi" -%}{%- assign clase = "msi" -%}{%- else -%}{%- assign clase = "norma-ext" -%}{%- endcase -%}
 {%- when "treaty" -%}
-{%- case genero -%}{%- when "reglamento (ue)" -%}{%- assign clase = "ue-reglamento" -%}{%- when "directiva (ue)" -%}{%- assign clase = "ue-directiva" -%}{%- when "tratado" -%}{%- assign clase = "tratado" -%}{%- endcase -%}
+{%- comment -%}
+  Género real de la biblioteca, no solo el de la tabla: "Reglamento
+  Delegado (UE)" y "Reglamento de Ejecución (UE)" siguen siendo
+  ue-reglamento, y la forma prelisboa "Directiva" (sin "(UE)", el marcador
+  va en el número: "Directiva 2009/110/CE") sigue siendo ue-directiva.
+  `contains` en vez de `==`, como ya hace la rama `bill` con "propuesta".
+  Sin colisión entre sí: tipo_csl ya aisló esta rama de la de `regulation`,
+  donde vive el "reglamento" chileno.
+{%- endcomment -%}
+{%- if genero contains "reglamento" -%}{%- assign clase = "ue-reglamento" -%}{%- elsif genero contains "directiva" -%}{%- assign clase = "ue-directiva" -%}{%- elsif genero == "tratado" -%}{%- assign clase = "tratado" -%}{%- endif -%}
 {%- when "bill" -%}
 {%- case genero -%}{%- when "proyecto de ley" -%}{%- assign clase = "pdl" -%}{%- when "moción" -%}{%- assign clase = "mocion" -%}{%- when "mensaje" -%}{%- assign clase = "mensaje" -%}{%- else -%}{%- if genero contains "propuesta" -%}{%- assign clase = "ue-propuesta" -%}{%- endif -%}{%- endcase -%}
 {%- when "legal_case" -%}
@@ -38,12 +47,31 @@ zotero: {{ item | item_link: "zotero" | json }}
 {%- case genero -%}{%- when "publicación judicial" -%}{%- assign clase = "do-judicial" -%}{%- when "aviso" -%}{%- assign clase = "do-aviso" -%}{%- endcase -%}
 {%- when "report" -%}{%- assign clase = "dictamen" -%}
 {%- endcase -%}
+{%- assign status_l = csl.status | default: "" | downcase | strip -%}
 {%- assign vigencia = "sin dato" -%}
-{%- if csl.status == "revocada" -%}{%- assign vigencia = "revocada" -%}{%- elsif csl.references -%}{%- assign vigencia = "modificada" -%}{%- elsif csl.status -%}{%- assign vigencia = csl.status -%}{%- endif %}
+{%- if status_l == "revocada" -%}{%- assign vigencia = "revocada" -%}{%- elsif csl.references -%}{%- assign vigencia = "modificada" -%}{%- elsif status_l != "" -%}{%- assign vigencia = status_l -%}{%- endif -%}
+{%- comment -%}
+  date-parts trae [año, mes, día] como números; join a secas da "2023-1-4",
+  que Obsidian no reconoce como fecha en Propiedades. prepend/slice rellena
+  a dos dígitos sin depender de un filtro de formato que Liquid no trae.
+{%- endcomment -%}
+{%- assign fp = csl.issued["date-parts"][0] -%}
+{%- assign fecha_iso = "" -%}
+{%- if fp and fp[0] -%}
+{%- assign fecha_iso = fp[0] -%}
+{%- if fp[1] -%}
+{%- assign mes_iso = fp[1] | prepend: "0" | slice: -2, 2 -%}
+{%- assign fecha_iso = fecha_iso | append: "-" | append: mes_iso -%}
+{%- if fp[2] -%}
+{%- assign dia_iso = fp[2] | prepend: "0" | slice: -2, 2 -%}
+{%- assign fecha_iso = fecha_iso | append: "-" | append: dia_iso -%}
+{%- endif -%}
+{%- endif -%}
+{%- endif %}
 organo: {{ csl.authority | default: csl.publisher | default: "" | json }}
 denominacion: {{ csl.genre | default: "" | json }}
 numero: {{ csl.number | default: "" | json }}
-fecha: {{ csl.issued["date-parts"][0] | join: "-" | json }}
+fecha: {{ fecha_iso | json }}
 vigencia: {{ vigencia | json }}
 clase: {{ clase | json }}
 enlace_oficial: {{ csl.URL | default: "" | json }}
@@ -63,22 +91,36 @@ enlace_oficial: {{ csl.URL | default: "" | json }}
 {%- when "report" -%}{%- if csl.authority -%}{%- assign es_normativa = true -%}{%- endif -%}
 {%- when "document" -%}{%- if genero == "publicación judicial" or genero == "aviso" -%}{%- assign es_normativa = true -%}{%- endif -%}
 {%- endcase -%}
+{%- assign status_l = csl.status | default: "" | downcase | strip -%}
 {%- assign vigencia = "sin dato" -%}
-{%- if csl.status == "revocada" -%}{%- assign vigencia = "revocada" -%}{%- elsif csl.references -%}{%- assign vigencia = "modificada" -%}{%- elsif csl.status -%}{%- assign vigencia = csl.status -%}{%- endif %}
+{%- if status_l == "revocada" -%}{%- assign vigencia = "revocada" -%}{%- elsif csl.references -%}{%- assign vigencia = "modificada" -%}{%- elsif status_l != "" -%}{%- assign vigencia = status_l -%}{%- endif -%}
+{%- assign fp = csl.issued["date-parts"][0] -%}
+{%- assign fecha_iso = "" -%}
+{%- if fp and fp[0] -%}
+{%- assign fecha_iso = fp[0] -%}
+{%- if fp[1] -%}
+{%- assign mes_iso = fp[1] | prepend: "0" | slice: -2, 2 -%}
+{%- assign fecha_iso = fecha_iso | append: "-" | append: mes_iso -%}
+{%- if fp[2] -%}
+{%- assign dia_iso = fp[2] | prepend: "0" | slice: -2, 2 -%}
+{%- assign fecha_iso = fecha_iso | append: "-" | append: dia_iso -%}
+{%- endif -%}
+{%- endif -%}
+{%- endif -%}
 # {{ item.title }}
 
 {% if es_normativa -%}
 ## Ficha jurídica
 
 - Órgano: {{ csl.authority | default: csl.publisher | default: "sin dato" }}
-- Denominación y número: {{ csl.genre | default: "" }} {{ csl.number | default: "" }}
-- Fecha: {{ csl.issued["date-parts"][0] | join: "-" | default: "sin dato" }}
+- Denominación y número: {% capture denom_txt %}{{ csl.genre | default: "" }} {{ csl.number | default: "" }}{% endcapture %}{{ denom_txt | strip | default: "sin dato" }}
+- Fecha: {{ fecha_iso | default: "sin dato" }}
 - Vigencia: {{ vigencia }}
 - Enlace oficial: {% if csl.URL %}<{{ csl.URL }}>{% else %}sin dato{% endif %}
 {%- else -%}
 ## Ficha
 
-- Autores: {% for c in item.creators %}{{ c.name }}{% unless forloop.last %}; {% endunless %}{% endfor %}
+- Autores: {% capture autores_txt %}{% for c in item.creators %}{{ c.name }}{% unless forloop.last %}; {% endunless %}{% endfor %}{% endcapture %}{{ autores_txt | strip | default: "sin dato" }}
 - Año: {{ item.year | default: "sin dato" }}
 - Publicación: {{ item.publicationTitle | default: item.publisher | default: "sin dato" }}
 {%- if item.DOI %}

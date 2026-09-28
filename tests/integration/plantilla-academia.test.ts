@@ -123,6 +123,44 @@ async function anotacion(key: string, parentItem: string, color: string, texto: 
     } as never);
 }
 
+/**
+ * Anotación de imagen o trazo (ink): a diferencia de highlight/underline, no
+ * trae `annotationText` (Zotero no la genera para estos tipos; ver
+ * db/annotation.ts, que solo copia `text` cuando el tipo es highlight o
+ * underline). La plantilla debe incrustar el png sin caerse por su ausencia.
+ */
+async function anotacionImagen(
+    key: string,
+    parentItem: string,
+    tipo: "image" | "ink",
+    color: string,
+    comentario: string,
+) {
+    await seedItem({
+        libraryID: LIB,
+        key,
+        itemType: "annotation",
+        parentItem,
+        raw: {
+            key,
+            library: { type: "user", id: LIB, name: "L" },
+            meta: {},
+            data: {
+                key,
+                itemType: "annotation",
+                parentItem,
+                annotationType: tipo,
+                annotationComment: comentario,
+                annotationColor: color,
+                annotationPageLabel: "5",
+                annotationSortIndex: "00000|000000|00000",
+                annotationPosition: JSON.stringify({ pageIndex: 4 }),
+                tags: [],
+            },
+        },
+    } as never);
+}
+
 async function adjunto(key: string, parentItem: string) {
     await seedItem({
         libraryID: LIB,
@@ -217,6 +255,32 @@ describe("literatura", () => {
         expect(texto).toContain("<!-- ZF_PERSIST_END_ideas -->");
     });
 
+    test("una anotación de imagen incrusta su png y no se cae sin texto", async () => {
+        await anotacionImagen("AN000004", "ADJ00001", "image", "#ffd400", "mirar el gráfico");
+        const texto = await cuerpo(articulo);
+        expect(seccion(texto, "Ideas clave")).toContain(
+            "![[Academia/Biblioteca/_imagenes/AN000004.png]]",
+        );
+        expect(seccion(texto, "Ideas clave")).toContain("mirar el gráfico");
+    });
+
+    test("una anotación de trazo (ink) incrusta su png y no se cae sin texto", async () => {
+        await anotacionImagen("AN000005", "ADJ00001", "ink", "#5fb236", "subrayado a mano");
+        const texto = await cuerpo(articulo);
+        expect(seccion(texto, "Datos y evidencia")).toContain(
+            "![[Academia/Biblioteca/_imagenes/AN000005.png]]",
+        );
+        expect(seccion(texto, "Datos y evidencia")).toContain("subrayado a mano");
+    });
+
+    test("sin autores, la ficha dice 'sin dato' en vez de dejar la línea colgando", async () => {
+        const sinAutores = await entrada("SOL00001", "journalArticle", { type: "article-journal" }, {
+            publicationTitle: "Revista Chilena",
+        });
+        const texto = await cuerpo(sinAutores);
+        expect(texto).toContain("- Autores: sin dato");
+    });
+
     test("el frontmatter trae la clave y deja 'leyendo' solo al nacer", async () => {
         const nueva = await service.renderLibrarySourceNote(articulo, PLANTILLA, {});
         expect(nueva).toContain("clave: claveart00001");
@@ -239,10 +303,19 @@ describe("normativa", () => {
         }, { abstractNote: "no debe salir" });
         const nota = await service.renderLibrarySourceNote(ley, PLANTILLA, {});
         expect(nota).toContain("clase: ley");
+        // Mes y día con dos dígitos y sin comillas: ZotFlow reparsea el
+        // frontmatter como YAML y lo reescribe (por eso el resto de los
+        // campos sale sin las comillas del filtro `json` del origen, como
+        // "clave: claveart00001" en la prueba de más abajo); sin comillas y
+        // con el patrón YYYY-MM-DD, YAML la tipa como fecha y Obsidian la
+        // muestra así en Propiedades. Con "2023-1-4" (sin acolchar) se queda
+        // como texto plano.
+        expect(nota).toContain("fecha: 2023-01-04");
         const texto = nota.split("---\n").slice(2).join("---\n");
         expect(texto).toContain("## Ficha jurídica");
         expect(texto).toContain("Ministerio de Hacienda");
         expect(texto).toContain("21.521");
+        expect(texto).toContain("- Fecha: 2023-01-04");
         expect(texto).not.toContain("## Resumen");
     });
 
@@ -253,15 +326,66 @@ describe("normativa", () => {
         expect(await cuerpo(modificada)).toContain("Vigencia: modificada");
     });
 
+    test("el status se normaliza sin importar mayúsculas", async () => {
+        const item = await entrada("NEXT0003", "standard", { type: "standard", genre: "Resolução BCB", status: "Revocada" });
+        expect(await cuerpo(item)).toContain("Vigencia: revocada");
+    });
+
+    test("sin denominación ni número, la ficha jurídica dice 'sin dato'", async () => {
+        const item = await entrada("DON00003", "statute", { type: "regulation" });
+        expect(await cuerpo(item)).toContain("- Denominación y número: sin dato");
+    });
+
     test("clases del contrato por tipo y denominación", async () => {
+        // Las 28 filas de SUBTIPOS (msmp.lua), una por fila, con el género
+        // exacto que trae la tabla, más las variantes reales que documenta
+        // CONTRATO.md para las mismas filas (reglamento delegado o de
+        // ejecución de la UE, "Decreto Supremo" completo en vez de "DS",
+        // directiva sin "(UE)" de antes de Lisboa, "decreto exento" junto a
+        // "resolución exenta").
         const casos: [string, string, Record<string, unknown>, string][] = [
+            // Rango legal
+            ["LEY00003", "statute", { type: "legislation", genre: "Ley" }, "ley"],
+            ["DFL00001", "statute", { type: "legislation", genre: "DFL" }, "dfl"],
+            ["DL000001", "statute", { type: "legislation", genre: "DL" }, "dl"],
+            ["COD00001", "statute", { type: "legislation", genre: "Código" }, "codigo"],
+            ["CPR00001", "statute", { type: "legislation", genre: "Constitución Política de la República" }, "constitucion"],
+            // Potestad reglamentaria del Presidente
+            ["DS000002", "statute", { type: "regulation", genre: "DS" }, "ds"],
+            ["DS000003", "statute", { type: "regulation", genre: "Decreto Supremo" }, "ds"], // Perú, CONTRATO.md
+            ["REG00001", "statute", { type: "regulation", genre: "Reglamento" }, "reglamento"],
+            // Normativa de los reguladores financieros
             ["NCG00001", "standard", { type: "standard", genre: "norma de carácter general" }, "ncg"],
-            ["EXT00001", "standard", { type: "standard", genre: "Resolução BCB" }, "norma-ext"],
-            ["DS000001", "statute", { type: "regulation", genre: "DS" }, "ds"],
+            ["CIR00001", "standard", { type: "standard", genre: "Circular" }, "circular"],
+            ["OFI00001", "standard", { type: "standard", genre: "Oficio" }, "oficio"],
+            ["RAN00001", "standard", { type: "standard", genre: "capítulo RAN" }, "ran"],
+            ["CNF00001", "standard", { type: "standard", genre: "capítulo CNF" }, "cnf"],
+            ["MSI00001", "standard", { type: "standard", genre: "capítulo MSI" }, "msi"],
+            // Publicaciones del Diario Oficial que no alcanzan rango de norma
+            ["DON00001", "statute", { type: "regulation", genre: "resolución exenta" }, "do-norma"],
+            ["DON00002", "statute", { type: "regulation", genre: "decreto exento" }, "do-norma"],
+            ["DOJ00001", "document", { type: "document", genre: "publicación judicial" }, "do-judicial"],
+            ["DOA00001", "document", { type: "document", genre: "aviso" }, "do-aviso"],
+            // Tramitación legislativa
             ["PDL00001", "bill", { type: "bill", genre: "proyecto de ley" }, "pdl"],
-            ["UEP00001", "bill", { type: "bill", genre: "propuesta de Reglamento (UE)" }, "ue-propuesta"],
+            ["MOC00001", "bill", { type: "bill", genre: "moción" }, "mocion"],
+            ["MEN00001", "bill", { type: "bill", genre: "mensaje" }, "mensaje"],
+            // Derecho de la Unión Europea y tratados
+            ["UER00001", "statute", { type: "treaty", genre: "Reglamento (UE)" }, "ue-reglamento"],
+            ["UER00002", "statute", { type: "treaty", genre: "Reglamento Delegado (UE)" }, "ue-reglamento"], // CONTRATO.md
+            ["UER00003", "statute", { type: "treaty", genre: "Reglamento de Ejecución (UE)" }, "ue-reglamento"], // CONTRATO.md
+            ["UED00001", "statute", { type: "treaty", genre: "Directiva (UE)" }, "ue-directiva"],
+            ["UED00002", "statute", { type: "treaty", genre: "Directiva" }, "ue-directiva"], // prelisboa, CONTRATO.md
+            ["TRA00001", "statute", { type: "treaty", genre: "Tratado" }, "tratado"],
+            // Jurisdicción y órganos administrativos
             ["SEN00001", "case", { type: "legal_case", genre: "sentencia" }, "sentencia"],
+            ["RES00001", "case", { type: "legal_case", genre: "resolución" }, "resolucion"],
+            ["AMP00001", "case", { type: "legal_case", genre: "decisión de amparo" }, "amparo"],
             ["DIC00001", "report", { type: "report", authority: "Contraloría General de la República" }, "dictamen"],
+            // Normativa de un regulador extranjero
+            ["EXT00001", "standard", { type: "standard", genre: "Resolução BCB" }, "norma-ext"],
+            // Propuesta legislativa de la Comisión Europea
+            ["UEP00001", "bill", { type: "bill", genre: "propuesta de Reglamento (UE)" }, "ue-propuesta"],
         ];
         for (const [key, itemType, csl, clase] of casos) {
             const item = await entrada(key, itemType, csl);
@@ -293,18 +417,15 @@ describe("ruta", () => {
         const sinClave = await entrada("NOKEY001", "journalArticle", { type: "article-journal" }, {}, LIB, "");
         expect(await paths.resolveLibraryNotePath(sinClave, RUTA)).toBe("Academia/Biblioteca/@NOKEY001.md");
         // Una barra en la clave (hay una real: iso/iecInformationTechnologyCloud2017)
-        // debería ir con guion, que es donde la busca el servidor de la Pieza 2.
-        // Hoy no llega: NotePathService.sanitizeSegment (note-path.ts:17-29) borra
-        // "/" del contexto de la ruta ANTES de que la plantilla lo vea (se aplica a
-        // todo el contexto salvo IGNORE_KEYS, y "citationKey" no está ahí), así que
-        // el `replace: "/", "-"` de ruta.txt nunca actúa sobre esa barra: ya no
-        // existe cuando la plantilla corre. El resultado real de hoy es sin guion.
-        // Corregirlo de raíz (que sanitizeSegment convierta "/" y "\" en "-" en vez
-        // de borrarlos) es un cambio genérico de note-path.ts, defendible ante el
-        // autor, y por eso es material de notas-a-demanda, no de esta rama: no se
-        // hizo aquí. Ver informe de la Tarea 3, "Desviaciones", para la decisión
-        // pendiente. ruta.txt conserva el `replace` tal cual: es inocuo hoy y es
-        // lo correcto el día que ese comportamiento cambie.
+        // no llega nunca a la plantilla: NotePathService.sanitizeSegment
+        // (note-path.ts:17-29) borra "/" del contexto de la ruta ANTES de
+        // renderizar (se aplica a todo el contexto salvo IGNORE_KEYS, y
+        // "citationKey" no está ahí). ruta.txt no lleva ningún `replace` para
+        // esto: sería letra muerta, porque el caracter ya no existe cuando la
+        // plantilla corre. Decisión de Víctor: el servidor de la Pieza 2 imita
+        // esta misma limpieza (nombreDeArchivo en el servidor, commit 3e8879b)
+        // en vez de tocar ZotFlow, así que las dos partes concuerdan en el
+        // nombre sin guion.
         const conBarra = await entrada("BARRA001", "standard", { type: "standard" }, {}, LIB, "iso/iecCloud2017");
         expect(await paths.resolveLibraryNotePath(conBarra, RUTA)).toBe("Academia/Biblioteca/@isoiecCloud2017.md");
     });
