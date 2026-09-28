@@ -215,6 +215,42 @@ describe("literatura", () => {
         expect(seccion(texto, "Ideas clave")).not.toContain("esto no convence");
     });
 
+    test("cada anotación es un bloque contiguo: sin línea en blanco entre cabecera, cita y cierre", async () => {
+        // No basta con toContain: una línea en blanco sin ">" corta el
+        // blockquote en Obsidian (la cabecera del callout queda sola y la
+        // cita cae fuera de la cita). Se afirma la estructura línea por
+        // línea.
+        await anotacion("AN000001", "ADJ00001", "#ffd400", "tesis central");
+        const nota = await service.renderLibrarySourceNote(articulo, PLANTILLA, {});
+        const lineas = nota.split("\n");
+        const inicio = lineas.findIndex((l) => l.startsWith("> [!zotflow-"));
+        expect(inicio).toBeGreaterThanOrEqual(0);
+        // La línea siguiente a la cabecera es la cita, no una línea en blanco.
+        expect(lineas[inicio + 1]).toMatch(/^> >/);
+        const fin = lineas.findIndex((l, i) => i > inicio && l.startsWith("^"));
+        expect(fin).toBeGreaterThan(inicio);
+        // Ninguna línea entre la cabecera y `^clave` (exclusive) está vacía:
+        // todo el bloque son líneas que empiezan con ">".
+        for (let i = inicio; i < fin; i++) {
+            expect(lineas[i]!.startsWith(">")).toBe(true);
+        }
+        // `^clave` va pegado, sin línea en blanco antes.
+        expect(lineas[fin - 1]).not.toBe("");
+    });
+
+    test("nunca hay dos líneas en blanco seguidas en la nota, con varias anotaciones y secciones", async () => {
+        await anotacion("AN000001", "ADJ00001", "#ffd400", "tesis clave 1");
+        await anotacion("AN000002", "ADJ00001", "#ffd400", "tesis clave 2");
+        await anotacion("AN000003", "ADJ00001", "#ff6666", "una crítica");
+        const nota = await service.renderLibrarySourceNote(articulo, PLANTILLA, {});
+        expect(nota).not.toContain("\n\n\n");
+        // Entre dos anotaciones de la misma sección hay exactamente una línea
+        // en blanco: el cierre de la primera y la cabecera de la segunda
+        // quedan separados por un solo salto de línea doble.
+        const texto = nota.split("---\n").slice(2).join("---\n");
+        expect(texto).toContain("^AN000001\n\n> [!zotflow-highlight-#ffd400]");
+    });
+
     test("una sección sin anotaciones no aparece", async () => {
         await anotacion("AN000001", "ADJ00001", "#ffd400", "tesis central");
         const texto = await cuerpo(articulo);
@@ -230,6 +266,16 @@ describe("literatura", () => {
         expect(seccion(texto, "Ideas clave")).toContain("en mayúsculas");
         expect(seccion(texto, "Ideas clave")).toContain("amarillo pálido");
         expect(seccion(texto, "Otros")).toContain("magenta");
+    });
+
+    test("el resumen en HTML crudo se convierte a texto legible", async () => {
+        const item = await entrada("HTM00001", "journalArticle", { type: "article-journal" }, {
+            abstractNote: "<p><span>Con la digitalización de los pagos.</span></p>",
+        });
+        const texto = await cuerpo(item);
+        expect(texto).not.toContain("<p>");
+        expect(texto).not.toContain("<span>");
+        expect(texto).toContain("Con la digitalización de los pagos.");
     });
 
     test("ficha, resumen, notas de lectura con su zona y la zona de ideas propias", async () => {
@@ -334,6 +380,22 @@ describe("normativa", () => {
     test("sin denominación ni número, la ficha jurídica dice 'sin dato'", async () => {
         const item = await entrada("DON00003", "statute", { type: "regulation" });
         expect(await cuerpo(item)).toContain("- Denominación y número: sin dato");
+    });
+
+    test("un capítulo RAN sin number usa chapter-number como número", async () => {
+        // CONTRATO.md: el número de capítulo va en la línea de Extra
+        // "Chapter Number: 2-2", que llega a la variable CSL chapter-number,
+        // no a number.
+        const item = await entrada("RAN00002", "standard", {
+            type: "standard",
+            genre: "capítulo RAN",
+            authority: "Comisión para el Mercado Financiero",
+            "chapter-number": "8-41",
+        });
+        const nota = await service.renderLibrarySourceNote(item, PLANTILLA, {});
+        expect(nota).toContain("numero: 8-41");
+        const texto = nota.split("---\n").slice(2).join("---\n");
+        expect(texto).toContain("- Denominación y número: capítulo RAN 8-41");
     });
 
     test("clases del contrato por tipo y denominación", async () => {
